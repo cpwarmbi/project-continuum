@@ -48,7 +48,7 @@ Servo_PWM = Pin(20, Pin.OUT)
 Servo_PWM = PWM(Servo_PWM, freq = SERVO_FREQ)
 
 # LED Initialization
-led_strip = neopixel.NeoPixel(Pin(9), LED_COUNT)
+led_strip = neopixel.NeoPixel(Pin(27), LED_COUNT)
 led_timer = Timer()
 led_counter = 0
 turn_color = ''
