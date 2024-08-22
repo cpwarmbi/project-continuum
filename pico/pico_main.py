@@ -5,11 +5,12 @@
 
 \authors    Corbin Warmbier | corbinwarmbier@gmail.com
 
-\date       Initial: 07/13/24  |  Last: 07/13/24
+\date       Initial: 07/13/24  |  Last: 07/22/24
 """
 
 """ [Imports] """
-from machine import ADC, Pin, PWM, Timer, UART
+from datetime import datetime
+from machine import Pin, PWM, Timer, UART
 import neopixel
 from time import sleep
 from math import pi
@@ -26,21 +27,24 @@ MOTOR_SPD_MAX = 200000  # Based on MOTOR_FREQ ! Must Change if MOTOR_FREQ is mod
 TIMER_FREQ = 4          # Hz
 LED_FREQ = 5            # Hz
 LED_COUNT = 44
-COUNTS_TO_ROTATION = 3  # Number of counters per wheel rotation (aka # of tape pieces)
 
 """ [Initialization] """
-# DC Motor Pin Setup
-Motor_PWM = Pin(13, Pin.OUT)
-Motor_INA = Pin(14, Pin.OUT)
-Motor_INB = Pin(15, Pin.OUT)
-Motor_CS = ADC(Pin(28))  # Optional Current Sensing Pin; Analog Read
+# Communication Lines
+uart = UART(0, 115200, tx=Pin(0), rx=Pin(1), timeout=2)  # Initialize UART communication over USB
+pico2pi = Pin(2, Pin.OUT)                                # Pico to Pi interrupt pin (Tx pin sending data)
+pi2pico = Pin(3, Pin.IN, Pin.PULL_DOWN)                  # Pi to Pico interrupt pin (Rx pin receiving data)
+disable = Pin(4, Pin.IN, Pin.PULL_DOWN)                  # Disable message sent from Pi to Pico
+pico_rdy = Pin(5, Pin.OUT)                               # Enable message sent from Pico to Pi
 
-Servo_PWM = Pin(20, Pin.OUT)                # Servo Motor Pin Setup
-Motor_Spd = Pin(22, Pin.IN, Pin.PULL_DOWN)  # Color Sensor for Tracking Speed Pin Setup
-UART_Rdy = Pin(2, Pin.OUT)                  # Interrupt Pin to set High when ready to transmit UART data
-
-# Initialize Pins for PWM and Set Frequency
+# Motor Setup
+# DC Motor
+Motor_INA = Pin(16, Pin.OUT)                             
+Motor_INB = Pin(17, Pin.OUT)
+Motor_PWM = Pin(18, Pin.OUT)
 Motor_PWM = PWM(Motor_PWM, freq = MOTOR_FREQ)
+
+# Servo Motor
+Servo_PWM = Pin(20, Pin.OUT)
 Servo_PWM = PWM(Servo_PWM, freq = SERVO_FREQ)
 
 # LED Initialization
@@ -49,15 +53,7 @@ led_timer = Timer()
 led_counter = 0
 turn_color = ''
 
-# Init UART Communication Lines
-pi2pico = Pin(3, Pin.IN, Pin.PULL_DOWN)
-uart = UART(0, 115200, tx=Pin(0), rx=Pin(1), timeout=2)
-
-Disable = Pin(4, Pin.IN, Pin.PULL_DOWN)
-Pico_Rdy = Pin(5, Pin.OUT)
-
 # Init Globals
-timer = Timer()
 counter = 0
 last_distance = 0
 traveled_distance = 0
@@ -78,7 +74,7 @@ def program_header():
     print("=============== [EEC195 Team 5] ===============\n")
     print("===============================================\n")
     print("=                                             =\n")
-    print("= Date: 05/17/2024                            =\n")
+    print(f"= Date: {datetime.today().strftime('%m-%d-%Y')}                           =\n")
     sleep(0.3)
     print("= Praying to 100,000 Indian Gods...           =\n")
     sleep(0.3)
@@ -159,7 +155,7 @@ def car_init():
     """
     Initializes all motors to neutral and brakes
     """
-    set_motor_dir('N')
+    set_motor_dir('B')
     set_motor_spd(0)
     set_servo('N')
     sleep(0.2)
@@ -168,7 +164,6 @@ def car_init():
 def car_stop():
     global turn_color
     turn_color == 'P'
-    timer.deinit()
     car_init()
 
 def disable_irq_handler(edge_type):
@@ -188,11 +183,11 @@ def spd_irq_handler(edge_type):
 def send_sensor_data(speed):
     print("Sending Sensor data to Pi")
     speed = speed +'\n'
-    UART_Rdy.value(1)
+    pico2pi.value(1)
     if uart.write(speed.encode('utf-8')) < 0:
         print("Error sending UART message to pi")
     uart.flush()
-    UART_Rdy.value(0)
+    pico2pi.value(0)
 
 
 def rx_irq_handler(edge_type):
@@ -204,27 +199,6 @@ def rx_irq_handler(edge_type):
     pid_dir, percent_ang, pid_brake = (message.strip('\n')).split(' ')
     pid_ang = float(percent_ang)
 
-def spd_counter(timer):
-    global counter
-    global traveled_distance
-    if counter != 0:
-        distance = (counter / COUNTS_TO_ROTATION) * 4.1 * pi  # Distance formula 'Rotations * Wheel Dia * Pi = Inches'
-        print(f'Traveled {distance} inches')
-        traveled_distance += distance
-        send_sensor_data(str(distance))
-    counter = 0
-
-
-# 4.1 inches (diameter of wheel)
-# Determine RPM
-# Equation: RPM * Wheel Diameter * Pi == Inches / Min
-def get_distance():
-    global last_distance
-    global traveled_distance
-    distance = traveled_distance - last_distance
-    last_distance = traveled_distance
-    print(f'Traveled {distance} inches since last func call')
-    return distance
 
 def led_handler(timer):
     global led_counter
@@ -250,27 +224,26 @@ def led_handler(timer):
 #          === [Main Function] ===          #
 # ========================================= #
 if True:
-    Pico_Rdy.value(0)
+    pico_rdy.value(0)
     led_timer.init(mode = Timer.PERIODIC, freq= LED_FREQ, callback = led_handler)
     # Init
     program_header()
     car_init()
-    Motor_Spd.irq(trigger = Pin.IRQ_RISING, handler = spd_irq_handler)
-    timer.init(mode = Timer.PERIODIC, freq = TIMER_FREQ, callback = spd_counter)
     
     pi2pico.irq(trigger = Pin.IRQ_RISING, handler = rx_irq_handler)
-    Disable.irq(trigger = Pin.IRQ_RISING, handler = disable_irq_handler)
+    disable.irq(trigger = Pin.IRQ_RISING, handler = disable_irq_handler)
     # uart.irq(UART.RX_any, handler=rx_irq_handler)
 
     while run:
-        Pico_Rdy.value(1)
+        pico_rdy.value(1)
         # Set Motor to Forward for 30%
         # set_servo(pid_dir, pid_ang)
         # set_motor_dir(pid_brake)
         # set_motor_spd(0.21)
         # sleep(0.2)
-        set_motor_spd(0.2)
+        # set_motor_dir('F')
+        # set_motor_spd(0.2)
         sleep(0.2)
 
-    Pico_Rdy.value(0)
+    pico_rdy.value(0)
     car_stop()
