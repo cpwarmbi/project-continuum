@@ -1,0 +1,13 @@
+=== [wifi] ===
+> ssid: Project-Continuum
+> pass: continua
+
+=== [raspberry pi] ===
+> hostname: continuum
+> password: continua
+
+=== [ssh] ===
+> username: oozmakappa
+> password: continua
+
+ls -l /dev/serial/by-id
