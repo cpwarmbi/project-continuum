@@ -5,11 +5,10 @@
 
 \authors    Corbin Warmbier | corbinwarmbier@gmail.com
 
-\date       Initial: 07/13/24  |  Last: 07/22/24
+\date       Initial: 07/13/24  |  Last: 08/23/24
 """
 
 """ [Imports] """
-from datetime import datetime
 from machine import Pin, PWM, Timer, UART
 import neopixel
 import time
@@ -93,7 +92,7 @@ def program_header():
     print("=============== [EEC195 Team 5] ===============\n")
     print("===============================================\n")
     print("=                                             =\n")
-    print(f"= Date: {datetime.today().strftime('%m-%d-%Y')}                           =\n")
+    print(f"= Date: 08/23/24                             =\n")
     time.sleep(0.3)
     print("= Praying to 100,000 Indian Gods...           =\n")
     time.sleep(0.3)
