@@ -5,13 +5,14 @@
 
 \authors    Corbin Warmbier | corbinwarmbier@gmail.com
 
-\date       Initial: 07/13/24  |  Last: 07/13/24
+\date       Initial: 07/13/24  |  Last: 07/22/24
 """
 
 """ [Imports] """
-from machine import ADC, Pin, PWM, Timer, UART
+from datetime import datetime
+from machine import Pin, PWM, Timer, UART
 import neopixel
-from time import sleep
+import time
 from math import pi
 
 
@@ -26,45 +27,59 @@ MOTOR_SPD_MAX = 200000  # Based on MOTOR_FREQ ! Must Change if MOTOR_FREQ is mod
 TIMER_FREQ = 4          # Hz
 LED_FREQ = 5            # Hz
 LED_COUNT = 44
-COUNTS_TO_ROTATION = 3  # Number of counters per wheel rotation (aka # of tape pieces)
 
 """ [Initialization] """
-# DC Motor Pin Setup
-Motor_PWM = Pin(13, Pin.OUT)
-Motor_INA = Pin(14, Pin.OUT)
-Motor_INB = Pin(15, Pin.OUT)
-Motor_CS = ADC(Pin(28))  # Optional Current Sensing Pin; Analog Read
+# Communication Lines
+uart = UART(0, 115200, tx=Pin(0), rx=Pin(1), timeout=2)  # Initialize UART communication over USB
+pico2pi = Pin(2, Pin.OUT)                                # Pico to Pi interrupt pin (Tx pin sending data)
+pi2pico = Pin(3, Pin.IN, Pin.PULL_DOWN)                  # Pi to Pico interrupt pin (Rx pin receiving data)
+disable = Pin(4, Pin.IN, Pin.PULL_DOWN)                  # Disable message sent from Pi to Pico
+pico_rdy = Pin(5, Pin.OUT)                               # Enable message sent from Pico to Pi
 
-Servo_PWM = Pin(20, Pin.OUT)                # Servo Motor Pin Setup
-Motor_Spd = Pin(22, Pin.IN, Pin.PULL_DOWN)  # Color Sensor for Tracking Speed Pin Setup
-UART_Rdy = Pin(2, Pin.OUT)                  # Interrupt Pin to set High when ready to transmit UART data
+# Ultrasonic Sensors
+us_sensors = {
+    'FL': {'trig': 6, 'echo': 7},
+    'FR': {'trig': 8, 'echo': 9},
+    'BR': {'trig': 10, 'echo': 11},
+    'BL': {'trig': 14, 'echo': 15}
+}
 
-# Initialize Pins for PWM and Set Frequency
+for location, sensor in us_sensors.items():
+    sensor['trig_pin'] = Pin(sensor['trig'], Pin.OUT)
+    sensor['echo_pin'] = Pin(sensor['echo'], Pin.IN)
+
+# Motor Setup
+# DC Motor
+Motor_INA = Pin(16, Pin.OUT)                             
+Motor_INB = Pin(17, Pin.OUT)
+Motor_PWM = Pin(18, Pin.OUT)
 Motor_PWM = PWM(Motor_PWM, freq = MOTOR_FREQ)
+
+# Servo Motor
+Servo_PWM = Pin(20, Pin.OUT)
 Servo_PWM = PWM(Servo_PWM, freq = SERVO_FREQ)
 
 # LED Initialization
-led_strip = neopixel.NeoPixel(Pin(9), LED_COUNT)
+led_strip = neopixel.NeoPixel(Pin(27), LED_COUNT)
 led_timer = Timer()
 led_counter = 0
 turn_color = ''
 
-# Init UART Communication Lines
-pi2pico = Pin(3, Pin.IN, Pin.PULL_DOWN)
-uart = UART(0, 115200, tx=Pin(0), rx=Pin(1), timeout=2)
-
-Disable = Pin(4, Pin.IN, Pin.PULL_DOWN)
-Pico_Rdy = Pin(5, Pin.OUT)
-
 # Init Globals
-timer = Timer()
-counter = 0
-last_distance = 0
-traveled_distance = 0
 run = 1
 pid_dir = 'N'
 pid_ang = 0
 pid_brake = 'F'
+start_time = {}
+distances = {}
+
+# Initialize the pins and interrupts
+for location, sensor in us_sensors.items():
+    sensor['trig_pin'] = Pin(sensor['trig'], Pin.OUT)
+    sensor['echo_pin'] = Pin(sensor['echo'], Pin.IN)
+    sensor['echo_pin'].irq(trigger=Pin.IRQ_RISING | Pin.IRQ_FALLING, handler=lambda pin, loc=location: echo_callback(pin, loc))
+    start_time[location] = 0
+    distances[location] = None
 
 # ========================================= #
 #         === [Local Functions] ===         #
@@ -78,15 +93,15 @@ def program_header():
     print("=============== [EEC195 Team 5] ===============\n")
     print("===============================================\n")
     print("=                                             =\n")
-    print("= Date: 05/17/2024                            =\n")
-    sleep(0.3)
+    print(f"= Date: {datetime.today().strftime('%m-%d-%Y')}                           =\n")
+    time.sleep(0.3)
     print("= Praying to 100,000 Indian Gods...           =\n")
-    sleep(0.3)
+    time.sleep(0.3)
     print("= Sacrificing 50 goats...                     =\n")
-    sleep(0.3)
+    time.sleep(0.3)
     print("= Message sent, program starting              =\n")
     print("===============================================\n")
-    sleep(0.3)  # The header must be seen...
+    time.sleep(0.3)  # The header must be seen...
 
 def set_motor_dir(direction):
     """
@@ -155,76 +170,87 @@ def set_servo(direction, percent_ang=0):
         turn_color = 'B'
 
 
+def send_trigger(trig_pin):
+    """
+    Sends a trigger pulse to the ultrasonic sensor to initiate distance measurement.
+    
+    :param trig_pin <Pin>: The GPIO pin configured as the trigger pin for the ultrasonic sensor.
+    :return: none
+    """
+    trig_pin.low()  # Ensure the trigger pin is low
+    time.sleep_us(2)  # Wait for 2 microseconds
+    trig_pin.high()  # Set the trigger pin high
+    time.sleep_us(10)  # Wait for 10 microseconds to send a pulse
+    trig_pin.low()  # Set the trigger pin low again
+
+
+def echo_callback(pin, location):
+    """
+    Handles the interrupt for the ultrasonic sensor's echo pin.
+    Calculates the distance based on the time taken for the echo to return.
+
+    :param pin <Pin>: The GPIO pin that triggered the interrupt (echo pin).
+    :param location <str>: The location identifier of the ultrasonic sensor (e.g., 'FL').
+    :return: none
+    """
+    global start_time, distances
+    if pin.value():  # Rising edge detected
+        start_time[location] = time.ticks_us()  # Record the current time in microseconds
+    else:  # Falling edge detected
+        duration = time.ticks_diff(time.ticks_us(), start_time[location])  # Calculate the time difference
+        distances[location] = (duration * 0.0343) / 2  # Convert time to distance in centimeters
+
+
+def trigger_all_sensors():
+    """
+    Sends a trigger pulse to all configured ultrasonic sensors.
+    
+    :return: none
+    """
+    for sensor in us_sensors.values():
+        send_trigger(sensor['trig_pin'])  # Trigger each ultrasonic sensor
+
+
 def car_init():
     """
     Initializes all motors to neutral and brakes
     """
-    set_motor_dir('N')
+    set_motor_dir('B')
     set_motor_spd(0)
     set_servo('N')
-    sleep(0.2)
+    time.sleep(0.2)
 
 
 def car_stop():
     global turn_color
     turn_color == 'P'
-    timer.deinit()
     car_init()
+
 
 def disable_irq_handler(edge_type):
     global run
     run = 0
 
-def spd_irq_handler(edge_type):
-    """
-    Interrupt handler for speed sensor
-    
-    :param edge_type <Pin obj>: Falling or rising edge irq detection
-    :return: none
-    """
-    global counter
-    counter += 1
 
 def send_sensor_data(speed):
     print("Sending Sensor data to Pi")
     speed = speed +'\n'
-    UART_Rdy.value(1)
+    pico2pi.value(1)
     if uart.write(speed.encode('utf-8')) < 0:
         print("Error sending UART message to pi")
     uart.flush()
-    UART_Rdy.value(0)
+    pico2pi.value(0)
 
 
 def rx_irq_handler(edge_type):
     global pid_dir
     global pid_ang
     global pid_brake
-    sleep(0.03)
+    time.sleep(0.03)
     message = uart.readline().decode('utf-8')
     pid_dir, percent_ang, pid_brake = (message.strip('\n')).split(' ')
     pid_ang = float(percent_ang)
 
-def spd_counter(timer):
-    global counter
-    global traveled_distance
-    if counter != 0:
-        distance = (counter / COUNTS_TO_ROTATION) * 4.1 * pi  # Distance formula 'Rotations * Wheel Dia * Pi = Inches'
-        print(f'Traveled {distance} inches')
-        traveled_distance += distance
-        send_sensor_data(str(distance))
-    counter = 0
-
-
-# 4.1 inches (diameter of wheel)
-# Determine RPM
-# Equation: RPM * Wheel Diameter * Pi == Inches / Min
-def get_distance():
-    global last_distance
-    global traveled_distance
-    distance = traveled_distance - last_distance
-    last_distance = traveled_distance
-    print(f'Traveled {distance} inches since last func call')
-    return distance
 
 def led_handler(timer):
     global led_counter
@@ -250,27 +276,39 @@ def led_handler(timer):
 #          === [Main Function] ===          #
 # ========================================= #
 if True:
-    Pico_Rdy.value(0)
+    # IRQ Setup
+    disable.irq(trigger = Pin.IRQ_RISING, handler = disable_irq_handler)
     led_timer.init(mode = Timer.PERIODIC, freq= LED_FREQ, callback = led_handler)
+    pi2pico.irq(trigger = Pin.IRQ_RISING, handler = rx_irq_handler)
+    for name, sensor in us_sensors.items():
+        sensor['echo_pin'].irq(trigger=Pin.IRQ_RISING | Pin.IRQ_FALLING, handler=lambda pin, loc=name: echo_callback(pin, loc))
+        start_time[name] = 0
+        distances[name] = None
+
     # Init
+    pico_rdy.value(0)
     program_header()
     car_init()
-    Motor_Spd.irq(trigger = Pin.IRQ_RISING, handler = spd_irq_handler)
-    timer.init(mode = Timer.PERIODIC, freq = TIMER_FREQ, callback = spd_counter)
-    
-    pi2pico.irq(trigger = Pin.IRQ_RISING, handler = rx_irq_handler)
-    Disable.irq(trigger = Pin.IRQ_RISING, handler = disable_irq_handler)
-    # uart.irq(UART.RX_any, handler=rx_irq_handler)
 
     while run:
-        Pico_Rdy.value(1)
+        pico_rdy.value(1)
+        trigger_all_sensors()
+        time.sleep(0.1)  # Allow time for all echoes to return
+        # Print distances from ultrasonic sensors
+        for location, distance in distances.items():
+            if distance is not None:
+                print(f"Distance to {location}: {distance:.2f} cm")
+            else:
+                print(f"Distance to {location}: Out of range or no reading")
+
         # Set Motor to Forward for 30%
         # set_servo(pid_dir, pid_ang)
         # set_motor_dir(pid_brake)
         # set_motor_spd(0.21)
-        # sleep(0.2)
-        set_motor_spd(0.2)
-        sleep(0.2)
+        # time.sleep(0.2)
+        # set_motor_dir('F')
+        # set_motor_spd(0.2)
+        time.sleep(0.2)
 
-    Pico_Rdy.value(0)
+    pico_rdy.value(0)
     car_stop()
