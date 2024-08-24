@@ -93,36 +93,6 @@ def write_pid_ctrl(direction, percent_ang, brake):
     ser.flush()
     GPIO.output(UART_PI_2_PICO_PIN, False)
 
-def polar_to_cartesian(r, theta):
-    """Convert polar coordinates to Cartesian coordinates."""
-    x = r * math.cos(theta)
-    y = r * math.sin(theta)
-    return x, y
-
-def cartesian_to_polar(x, y):
-    """Convert Cartesian coordinates to polar coordinates."""
-    r = math.sqrt(x**2 + y**2)
-    theta = math.atan2(y, x)
-    return r, theta
-
-def sum_polar_vectors(vectors):
-    """Sum vectors in polar coordinates."""
-    sum_x = 0
-    sum_y = 0
-
-    for theta, r in vectors:
-        x, y = polar_to_cartesian(r, theta)
-        sum_x += x
-        sum_y += y
-
-    return cartesian_to_polar(sum_x, sum_y)
-
-def find_mag(vectors):
-    """Sum vectors given in polar coordinates and return the magnitude of the resultant vector."""
-    cartesian_vectors = np.array([polar_to_cartesian(angle, distance) for angle, distance in vectors])
-    resultant_cartesian = np.sum(cartesian_vectors, axis=0)
-    resultant_magnitude = np.linalg.norm(resultant_cartesian)
-    return resultant_magnitude
 
 def find_smallest_angle(vectors):
     min_distance = vectors[0][1]
@@ -131,6 +101,7 @@ def find_smallest_angle(vectors):
             min_distance = distance
             smallest_angle = angle
     return smallest_angle, min_distance
+
 
 def find_longest_string_of_zeros(arr):
     max_length = 0
@@ -158,6 +129,7 @@ def find_longest_string_of_zeros(arr):
         max_end_index = len(arr) - 1
 
     return max_length, max_start_index, max_end_index
+
 
 def PID_control(scan_data):
     """
@@ -286,15 +258,10 @@ def process_data(data):
     # For Mapping do rh_vector and lh_vector but with 360 measurements (and 0's in the non ideals)
     UART_Rdy = 0
     travel_distance = 0
-    ## PID CALCULATIONS
-    #if tmp_cnt % 2 == 0:
     direction, percent_ang ,brake = PID_control(data)
     write_pid_ctrl(direction, percent_ang, brake)
-       # print(json.dumps(data_json))
-
-    tmp_cnt += 1
-    #print(json.dumps(data_json))
-    #requests.post('http://10.42.0.61:8069', json=data_json)
+    print(json.dumps(data_json))
+    requests.post('http://10.42.0.61:8069', json=data_json)
 
 if True:
     # Setup Interrupt Handler (what is bouncetime?)

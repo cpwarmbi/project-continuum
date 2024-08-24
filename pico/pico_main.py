@@ -292,13 +292,14 @@ if True:
     while run:
         pico_rdy.value(1)
         trigger_all_sensors()
-        time.sleep(0.1)  # Allow time for all echoes to return
+        time.sleep(0.05)  # Allow time for all echoes to return
         # Print distances from ultrasonic sensors
         for location, distance in distances.items():
             if distance is not None:
                 print(f"Distance to {location}: {distance:.2f} cm")
             else:
                 print(f"Distance to {location}: Out of range or no reading")
+        print("\n")
 
         # Set Motor to Forward for 30%
         # set_servo(pid_dir, pid_ang)

@@ -77,8 +77,6 @@ def gen_file_out(data, car_distance):
         }
         json.dump(data_json, fp)
 
- # ssh oozmakappa@10.42.0.1
- # btsbts07
 # ========================================= #
 #          === [Main Function] ===          #
 # ========================================= #
