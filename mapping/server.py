@@ -11,6 +11,7 @@
 """ [Imports] """
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import logging
+import os
 from sys import argv
 import numpy as np
 import math
@@ -49,33 +50,29 @@ def run(server_class=HTTPServer, handler_class=S, port=8069):
     httpd.server_close()
     logging.info('Stopping httpd...\n')
 
-def deg_to_rad(degrees):
-    return degrees * (math.pi / 180)
-
-# Experimental WIP #
 def gen_file_out(data, car_distance):
-    with open('lidar_scans.json', 'w', encoding='utf-8') as fp:
-        # Initialize x and y components
-        x_sum = 0
-        y_sum = 0
-        for angle, distance in enumerate(data):
-            angle_rad = deg_to_rad(angle)
-            x_sum += distance * math.cos(angle_rad)
-            y_sum += distance * math.sin(angle_rad)
-        # Calculate Resulting Angle of Vectors
-        angle_resultant = math.atan2(y_sum, x_sum)
-        angle_resultant_deg = math.degrees(angle_resultant)
+    data_json = {
+        "scan_data": data,
+        "distance": car_distance
+    }
 
-        # Ensure the angle is in the range [0, 360)
-        if angle_resultant_deg < 0:
-            angle_resultant_deg += 360
-
-        data_json = {
-            "angle" : angle_resultant_deg,
-            "car_distance" : car_distance,
-            "scans" : data
-        }
-        json.dump(data_json, fp)
+    file_path = 'lidar_scans.json'
+    
+    if os.path.exists(file_path) and os.path.getsize(file_path) > 0:
+        # If the file exists and is not empty, load the existing content
+        with open(file_path, 'r', encoding='utf-8') as fp:
+            existing_data = json.load(fp)
+        
+        # Append the new JSON object to the existing list
+        existing_data.append(data_json)
+        
+    else:
+        # If the file does not exist or is empty, create a new list with the JSON object
+        existing_data = [data_json]
+    
+    # Write the updated list back to the file
+    with open(file_path, 'w', encoding='utf-8') as fp:
+        json.dump(existing_data, fp, indent=4)
 
 # ========================================= #
 #          === [Main Function] ===          #

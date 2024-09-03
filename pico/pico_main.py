@@ -308,7 +308,9 @@ if True:
         # time.sleep(0.2)
         # set_motor_dir('F')
         # set_motor_spd(0.2)
-        time.sleep(0.2)
+        set_motor_dir('F')
+        set_motor_spd(0.2)
+        time.sleep(0.1)
 
     pico_rdy.value(0)
     car_stop()
