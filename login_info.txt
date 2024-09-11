@@ -11,3 +11,16 @@
 > password: continua
 
 ls -l /dev/serial/by-id
+
+=== [networking] ===
+RPi Mac Addr: d8:3a:dd:65:65:a8
+
+=== [Project Continuum Network] ===
+RPi IP Addr: 10.42.0.1
+Macbook IP Addr: 10.42.0.61
+
+=== [Teddie88] ===
+Macbook IP Addr: 192.168.1.46
+
+SSH:
+oozmakappa@{ip_addr}
