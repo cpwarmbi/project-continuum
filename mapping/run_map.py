@@ -4,6 +4,6 @@ import time
 import matlab.engine
 eng = matlab.engine.start_matlab()
 eng.BuildMap(nargout=0)
+print("Running")
 while True:
-    print("Running")
-    time.sleep(0.5)
+    time.sleep(0.1)

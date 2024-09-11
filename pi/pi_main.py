@@ -42,12 +42,12 @@ ACC_MEDIANTABLESIZE = 9         # Median filter table size for accelerometer. Hi
 MAG_MEDIANTABLESIZE = 9         # Median filter table size for magnetometer. Higher = smoother but a longer delay
 
 """ [Compass Calibration Offsets] """
-magXmin =  0
-magYmin =  0
-magZmin =  0
-magXmax =  0
-magYmax =  0
-magZmax =  0
+magXmin =  -2019
+magYmin =  -764
+magZmin =  -2038
+magXmax =  -14
+magYmax =  1275
+magZmax =  -1555
 
 """ [Initializations] """
 ser = serial.Serial(
@@ -564,17 +564,17 @@ def PID_control(scan_data):
     rh_vectors, rh_flag = interpolate_vector(rh_vectors)
     fw_vectors, fw_flag = interpolate_vector(fw_vectors)
     if rh_flag == 0:
-        print(rh_vectors)
-        print("\n")
+        #print(rh_vectors)
+        #print("\n")
         rh_avg = average_of_angles(rh_vectors, 170, 190)
         print(rh_avg)
         if rh_avg > 1750:
             print("Turn Right!")
-        print("\n\n")
+        #print("\n\n")
         
     if fw_flag == 0:
-        print(fw_vectors)
-        print("\n")
+        #print(fw_vectors)
+        #print("\n")
         fw_avg = average_of_angles(fw_vectors, 80, 100)
         print(fw_avg)
         if fw_avg < 750:
@@ -679,7 +679,6 @@ def process_data(data, headings):
         travel_distance = float(UART_Rdy)
     data_json = {
         "scan_data" : data,
-        "distance" : travel_distance
     }
     heading, tilt_comp_heading = headings
     # For Mapping do rh_vector and lh_vector but with 360 measurements (and 0's in the non ideals)
