@@ -564,23 +564,18 @@ def PID_control(scan_data):
     rh_vectors, rh_flag = interpolate_vector(rh_vectors)
     fw_vectors, fw_flag = interpolate_vector(fw_vectors)
     if rh_flag == 0:
-        #print(rh_vectors)
-        #print("\n")
         rh_avg = average_of_angles(rh_vectors, 170, 190)
         print(rh_avg)
         if rh_avg > 1750:
             print("Turn Right!")
-        #print("\n\n")
         
     if fw_flag == 0:
-        #print(fw_vectors)
-        #print("\n")
         fw_avg = average_of_angles(fw_vectors, 80, 100)
         print(fw_avg)
         if fw_avg < 750:
             print("Dead End Found!")
         print("\n\n")
-
+    
     # """ Target Angle """
     # # Get the longest string of zeros array (the angle we want to be)
     # zero_length, zero_start, zero_end = find_longest_string_of_zeros(fw_vectors)
